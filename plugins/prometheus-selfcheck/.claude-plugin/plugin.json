@@ -1,0 +1,7 @@
+{
+  "name": "prometheus-selfcheck",
+  "description": "Interactive audit of Prometheus and Alertmanager: rule timing contracts, monitor-of-monitor coverage, capacity margins, and upgrade path",
+  "version": "0.1.0",
+  "author": { "name": "HahaSula" },
+  "license": "MIT"
+}

@@ -1,0 +1,12 @@
+{
+  "name": "prometheus-selfcheck-skills",
+  "description": "Interactive self-check skills for Prometheus and Alertmanager owners",
+  "owner": { "name": "HahaSula" },
+  "plugins": [
+    {
+      "name": "prometheus-selfcheck",
+      "source": "./plugins/prometheus-selfcheck",
+      "description": "Audit whether your alert rules can be trusted and which monitor-of-monitor signals are missing"
+    }
+  ]
+}

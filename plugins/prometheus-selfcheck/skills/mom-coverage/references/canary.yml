@@ -1,0 +1,14 @@
+# Canary 範本。把 M、my-job 換成實際值，每個關鍵 job 一組。放在受測 Prometheus。
+groups:
+  - name: canary               # 獨立小 group：不要和昂貴的 recording rule 放一起
+    rules:
+      - alert: Watchdog        # L0：不依賴資料，只證明 Prometheus → Alertmanager → 接收端活著
+        expr: vector(1)
+        labels: { severity: none, scope: pipeline }
+      - alert: DataHeartbeatMyJob   # L1：scrape → TSDB → 查詢有新資料時才會 firing，消失就代表斷了
+        expr: time() - max(timestamp(M{job="my-job"})) < 300
+        labels: { severity: none, scope: pipeline }
+      - alert: KnownTrueCanary # L2：已知成立的條件，帶 for；crash loop 時只有這種 canary 會斷
+        expr: rate(M{job="my-job"}[10m]) >= 0
+        for: 5m
+        labels: { severity: none, scope: pipeline }

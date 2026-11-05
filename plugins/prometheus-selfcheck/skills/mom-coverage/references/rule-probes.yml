@@ -1,0 +1,18 @@
+# 把下面的 M、job、[R] 換成實際 rule 用的值，放在該 alert 的同一個 group、同一個 interval。
+# 查詢是在 rule 執行當下算的，所以記錄的是 rule 當時看到的狀況，事後查詢無法重現。
+groups:
+  - name: example-with-probes
+    interval: 30s
+    rules:
+      - record: rule_probe:visible_samples:min      # 視窗內可見 sample 數，低於 2 時 rate 回傳空
+        expr: min(count_over_time(M{job="my-job"}[10m] offset 3m))
+      - record: rule_probe:data_age_seconds:max     # 最舊 series 的資料年齡，約等於 I + d
+        expr: max(time() - timestamp(M{job="my-job"}))
+      - record: rule_probe:series:count             # series 數掉到 0 時 alert 不會觸發
+        expr: count(M{job="my-job"}) or vector(0)
+      - alert: RuleProbeTooFewSamples               # 探針本身也可以告警
+        expr: rule_probe:visible_samples:min < 2
+        for: 5m
+      - alert: MyAlert
+        expr: rate(M{job="my-job"}[10m] offset 3m) > 100
+        for: 5m

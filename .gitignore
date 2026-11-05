@@ -1,0 +1,5 @@
+selfcheck-data/
+selfcheck-report.md
+selfcheck-policy.json
+__pycache__/
+*.pyc
