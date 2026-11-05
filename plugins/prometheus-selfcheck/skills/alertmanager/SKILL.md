@@ -46,6 +46,8 @@ alertmanager_cluster_health_score
 - **2.x 的 notifier 只有一條 queue**，每批等所有 Alertmanager 回應，一台慢會拖累全部；3.x 新版每台各自一條。
 - 2.x 的 `notifications_dropped_total` 大多只在所有 Alertmanager 都失敗或 queue 滿時才增加，要搭配 errors 看。
 
+**接收端掛掉時，只有這個 metric 會動：** 實測接收端停機時，通知全部中斷，但 Alertmanager 的 `/-/healthy`、`/-/ready`、`/api/v2/status` 探測全部成功，`prometheus_notifications_errors_total` 也是 0；只有 `alertmanager_notifications_failed_total` 增加。Log 會出現 `Notify for alerts failed`。
+
 ## 時間要算清楚
 
 | 項目 | 公式 | 影響 |

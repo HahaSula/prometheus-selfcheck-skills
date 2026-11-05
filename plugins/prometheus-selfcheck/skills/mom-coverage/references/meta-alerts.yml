@@ -63,6 +63,17 @@ groups:
         labels: { severity: critical, scope: prometheus }
         annotations: { summary: "沒有可用的 Alertmanager" }
 
+      - alert: AlertmanagerNotificationsFailing
+        expr: sum by (instance, integration) (rate(alertmanager_notifications_failed_total[5m])) > 0
+        for: 5m
+        labels: { severity: critical, scope: alertmanager }
+        annotations: { summary: "Alertmanager 送不到接收端；探測 Alertmanager 本身仍會正常" }
+      - alert: AlertmanagerConfigReloadFailed
+        expr: alertmanager_config_last_reload_successful == 0
+        for: 10m
+        labels: { severity: warning, scope: alertmanager }
+        annotations: { summary: "Alertmanager 新設定沒有生效" }
+
   - name: pipeline-storage            # 儲存與 WAL
     rules:
       - alert: PrometheusRestarted

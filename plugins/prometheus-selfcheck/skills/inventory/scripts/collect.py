@@ -74,7 +74,7 @@ def main():
         "am_discovered": "min(prometheus_notifications_alertmanagers_discovered)",
         # Which supporting data sources exist at all
         "has_self_metrics": "count(prometheus_tsdb_head_series)", "has_am_metrics": "count(alertmanager_notifications_total)",
-        "has_cadvisor": "count(container_cpu_cfs_periods_total)", "has_ksm": "count(kube_pod_container_status_restarts_total)", "has_kubelet_volume": "count(kubelet_volume_stats_available_bytes)", "has_node_exporter": "count(node_filesystem_avail_bytes)",
+        "has_cadvisor": "count(container_cpu_cfs_periods_total)", "has_ksm": "count(kube_pod_container_status_restarts_total)", "has_kubelet_volume": "count(kubelet_volume_stats_available_bytes)", "has_node_exporter": "count(node_filesystem_avail_bytes)", "has_blackbox": "count(probe_success)",
         "throttling_ratio_peak": f'max(max_over_time((rate(container_cpu_cfs_throttled_periods_total{{container=~"prometheus"}}[5m]) / rate(container_cpu_cfs_periods_total{{container=~"prometheus"}}[5m]))[{W}:5m]))',
         "mem_ratio_peak": f'max(max_over_time((container_memory_working_set_bytes{{container="prometheus"}} / (container_spec_memory_limit_bytes{{container="prometheus"}} > 0))[{W}:5m]))',
     }

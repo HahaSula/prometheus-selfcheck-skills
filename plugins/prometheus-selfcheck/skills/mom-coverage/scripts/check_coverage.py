@@ -69,7 +69,7 @@ def main():
     except (OSError, KeyError, ValueError): pass
     if p:
         print("\n## 資料來源\n\n這些 metric 要先有人抓，規則才有資料可用。\n\n| 來源 | 狀態 |\n|---|---|")
-        for k, label in [("has_self_metrics", "Prometheus 自身 metric"), ("has_am_metrics", "Alertmanager metric"), ("has_cadvisor", "cAdvisor"), ("has_ksm", "kube-state-metrics"), ("has_kubelet_volume", "kubelet volume stats"), ("has_node_exporter", "node_exporter")]:
+        for k, label in [("has_self_metrics", "Prometheus 自身 metric"), ("has_am_metrics", "Alertmanager metric"), ("has_cadvisor", "cAdvisor"), ("has_ksm", "kube-state-metrics"), ("has_kubelet_volume", "kubelet volume stats"), ("has_node_exporter", "node_exporter"), ("has_blackbox", "blackbox 探測（這台）")]:
             print(f"| {label} | {'有' if p.get(k) else '查不到'} |")
     if a.json: json.dump(out, open(a.json, "w"), indent=1, ensure_ascii=False)
 if __name__ == "__main__":

@@ -28,6 +28,29 @@ argument-hint: "[snapshot-dir]"
 | Alertmanager 停機 | 發現 | 發現 | 發現 |
 | Prometheus 停機 | **約 4 分鐘後才發現** | 同左 | 同左 |
 
+## 如果已經用 blackbox 探測
+
+另一台 Prometheus 加 blackbox 是好的底層，但它只證明行程活著。實測 8 種故障裡，`/-/healthy`、`/-/ready` 只明確抓到 Prometheus 和 Alertmanager 自己停機：
+
+| 故障 | 存活探測 | 真正抓到的訊號 |
+|---|---|---|
+| CPU 不足 | 全部成功 | `iterations_missed` |
+| 查詢飽和 | 實際查詢才會失敗（10／14） | 查詢 slot 比值 |
+| Target 停機 | 全部成功 | `up == 0` |
+| 接收端停機，通知全斷 | 全部成功 | `alertmanager_notifications_failed_total` |
+| OOM crash loop | 18／19 成功，幾乎看不出來 | `process_start_time_seconds` |
+| 磁碟完全寫滿 | 全部成功 | `wal_writes_failed_total` |
+
+建議依序往上補：
+1. 保留 blackbox，加一個真的跑查詢的探測，並用 `fail_if_body_not_matches_regexp` 驗證回應。
+2. 外部 Prometheus 直接抓兩者的 `/metrics`。
+3. 用 `/federate` 拉 `up`、`scrape_duration_seconds`、`ALERTS*`。
+4. 受測 Prometheus 加帶 `for` 的資料 canary。
+5. Watchdog 送到真正外部的 dead man's switch，定期實測。
+6. K8s 環境補 cAdvisor、kube-state-metrics、PVC 用量。
+
+**一定要問：外部 Prometheus 的告警走哪條路？** 如果也走被監控的同一組 Alertmanager，Alertmanager 掛掉時它無法通知。它本身也需要 dead man's switch。
+
 ## 執行
 
 ```bash
@@ -40,9 +63,10 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/check_coverage.py" ./selfcheck-data
 
 腳本看不到架構，所以要問：
 
-1. **有外部 dead man's switch 嗎？** Watchdog 送到哪裡？沒收到多久會通知誰？上次實際測試是什麼時候？
-2. **有另一台 Prometheus 監控這台嗎？** 它和受測對象會不會一起掛（同節點、同儲存、同叢集）？
-3. **關鍵 job 有哪些？** 用來產生 L1 heartbeat。
+1. **現在怎麼監控這台 Prometheus 和 Alertmanager？** 例如 blackbox、另一台 Prometheus 抓 metric、Dead Man's Snitch。外部那台自己的告警走哪條路？
+2. **有外部 dead man's switch 嗎？** Watchdog 送到哪裡？沒收到多久會通知誰？上次實際測試是什麼時候？
+3. **有另一台 Prometheus 監控這台嗎？** 它和受測對象會不會一起掛（同節點、同儲存、同叢集）？
+4. **關鍵 job 有哪些？** 用來產生 L1 heartbeat。
 
 ## 產生規則
 

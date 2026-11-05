@@ -125,6 +125,23 @@ Replay 只有 8–13 秒，所以這裡無法驗證大型環境 replay 時的記
 
 CPU、scrape、rule 耗時沒有明顯差異，2.55 以上記憶體約少 10%。同時期機器上有其他實驗，幾個百分點內的差距不能當成版本差異。
 
+## 8. Blackbox 探測能看到什麼
+
+每 15 秒探測 Prometheus 的 `/-/healthy`、`/-/ready`、實際查詢，以及 Alertmanager 的 `/-/healthy`、`/-/ready`、`/api/v2/status`。
+
+| 故障 | Prometheus 存活探測 | Prometheus 查詢 | Alertmanager 探測 | 真正抓到的訊號 |
+|---|---|---|---|---|
+| CPU 降到 0.1 核 | 全部成功 | 全部成功 | 全部成功 | `iterations_missed`，50s |
+| 查詢飽和 | 全部成功 | 10／14 | 全部成功 | 查詢 slot 比值，70s |
+| Target 停機 | 全部成功 | 全部成功 | 全部成功 | `up == 0`，85s |
+| 接收端停機 | 全部成功 | 全部成功 | 全部成功 | `alertmanager_notifications_failed_total` |
+| OOM crash loop（重啟 4 次） | healthy 全部成功，ready 18／19 | 18／19 | 全部成功 | `process_start_time_seconds`，10s |
+| 磁碟完全寫滿 | 全部成功 | 全部成功 | 全部成功 | `wal_writes_failed_total`，15s |
+| Alertmanager 停機 | 全部成功 | 全部成功 | 全部失敗 | Blackbox |
+| Prometheus 停機 | 全部失敗 | 全部失敗 | 全部成功 | Blackbox |
+
+接收端停機 170 秒時，`alertmanager_notifications_failed_total` 2 分鐘內增加約 40 次，`prometheus_notifications_errors_total` 為 0。
+
 ## 上游參考
 
 - [#13027](https://github.com/prometheus/prometheus/issues/13027)、[#13152](https://github.com/prometheus/prometheus/issues/13152) WAL 損毀後無法截斷
