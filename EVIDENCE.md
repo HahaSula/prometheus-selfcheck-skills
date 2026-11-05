@@ -111,6 +111,20 @@ Replay 只有 8–13 秒，所以這裡無法驗證大型環境 replay 時的記
 
 **Alert 恢復 3 萬個實例（debug log 時間）：** 2.51.2 1.5s、2.55.1 0.9s、3.13.5 0.7s。
 
+**相同負載的資源比較：** 30 萬 series、每秒約 2 萬 sample、15 分鐘 block，三個版本同時跑，量測 40 分鐘，各一次。
+
+| 指標（平均） | 2.51.2 | 2.55.1 | 3.13.5 |
+|---|---|---|---|
+| CPU（核） | 0.66 | 0.70 | 0.65 |
+| RSS | 1.40GB | 1.25GB | 1.26GB |
+| 記憶體配置速率 | 67MB/s | 52MB/s | 53MB/s |
+| 大 target scrape | 0.68s | 0.71s | 0.78s |
+| 重 rule group | 6.5s | 6.9s | 6.8s |
+| WAL 大小 | 316MB | 317MB | 316MB |
+| 非正常重啟的 replay | 6.1s | 4.7s | 6.0s |
+
+CPU、scrape、rule 耗時沒有明顯差異，2.55 以上記憶體約少 10%。同時期機器上有其他實驗，幾個百分點內的差距不能當成版本差異。
+
 ## 上游參考
 
 - [#13027](https://github.com/prometheus/prometheus/issues/13027)、[#13152](https://github.com/prometheus/prometheus/issues/13152) WAL 損毀後無法截斷

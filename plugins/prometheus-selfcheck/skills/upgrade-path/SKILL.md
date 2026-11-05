@@ -25,7 +25,7 @@ argument-hint: "[current-version]"
 | Alert 恢復只查一次 | 重啟恢復 `for` 的查詢數 | 2.53 | 低，3 萬實例實測只差不到 1 秒 |
 
 **升級解決不了：**
-- Scrape 比 interval 慢、rule group 太重。
+- Scrape 比 interval 慢、rule group 太重。相同負載實測下，2.51.2、2.55.1、3.13.5 的 CPU、scrape 與 rule 耗時沒有明顯差異，只有 2.55 以上記憶體約少 10%（30 萬 series，單次量測）。
 - WAL 半筆寫入：截至 2026-11 的 main 仍未修復。
 - Runtime 損毀時 `wal_corruptions_total` 為 0：修正在 3.16 rc。
 - Reload timer 被 compaction 訊號重置：修正只在 main，還沒有正式版。

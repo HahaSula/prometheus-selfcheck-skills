@@ -13,7 +13,7 @@
 | CPU、記憶體邊際 | 完成 | 見 EVIDENCE 第 4、5 節 |
 | IOPS、磁碟滿、compaction 用完空間 | 完成 | 見 EVIDENCE 第 6 節 |
 | 跨版本回退、alert 恢復 | 完成 | 見 EVIDENCE 第 7 節 |
-| 版本資源比較（2.51.2、2.55.1、3.13.5） | 進行中 | |
+| 版本資源比較（2.51.2、2.55.1、3.13.5） | 完成 | 見 EVIDENCE 第 7 節 |
 | Blackbox 探測在各故障下的結果 | 進行中 | |
 | K8s 驗證（minikube + kube-prometheus-stack） | 排隊中 | `container`、kube-state-metrics 相關規則尚未實際執行 |
 
@@ -44,6 +44,6 @@
 
 ## 下一步
 
-1. 完成資源比較與 blackbox 實驗，更新 EVIDENCE 和 skill。
+1. 完成 blackbox 實驗，更新 EVIDENCE 和 skill。
 2. 完成 K8s 驗證，實際執行 `meta-alerts.yml`。
 3. 依使用回饋調整 skill 的提問流程。
