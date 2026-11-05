@@ -20,7 +20,7 @@ argument-hint: "[current-version]"
 | 自動 `GOMAXPROCS`、`GOMEMLIMIT` | Throttling、接近 limit 才 GC | 3.0 預設，2.x 可用 flag | 高，但不必升級就能開 |
 | Rule 依賴判斷修正 | 無法判斷依賴時仍併行 | 3.1 | 只有開 `concurrent-rule-eval` 才相關 |
 | `retention.percentage` | 以磁碟百分比設定 retention | 3.11 | 中 |
-| 每台 Alertmanager 獨立 queue | 一台慢拖累全部 | 3.x 新版 | 多台時有用 |
+| 每台 Alertmanager 獨立 queue | 一台慢拖累全部 | 3.10（3.5 LTS 沒有） | 多台時有用 |
 | LTS 支援 | 有修補可用 | 依版本 | 高 |
 | Alert 恢復只查一次 | 重啟恢復 `for` 的查詢數 | 2.53 | 低，3 萬實例實測只差不到 1 秒 |
 
@@ -29,6 +29,18 @@ argument-hint: "[current-version]"
 - WAL 半筆寫入：截至 2026-11 的 main 仍未修復。
 - Runtime 損毀時 `wal_corruptions_total` 為 0：修正在 3.16 rc。
 - Reload timer 被 compaction 訊號重置：修正只在 main，還沒有正式版。
+
+## 升級會改變執行模型嗎
+
+單序的環節大多不變，所以對應的瓶頸升級後還在。
+
+| 層級 | 2.51、2.55 | 3.x |
+|---|---|---|
+| Scrape、WAL、Head、查詢引擎 | 相同 | 相同 |
+| Rule group | 預設單序；flag 併行時依賴判斷有問題 | 預設仍單序；3.1 修正依賴判斷，3.2 起分批併行 |
+| Notifier | 一條 queue，等所有 Alertmanager | 3.4 起批次可調；**3.10 起每台各一條** |
+| TSDB 維護 | 單一 goroutine | 仍是單一 goroutine；reload timer 問題仍在，實測 3.13.5 同樣歸零 |
+| `GOMAXPROCS`、`GOMEMLIMIT` | 要開 feature flag | 3.0 起預設對齊 |
 
 ## 路徑
 
