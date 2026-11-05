@@ -1,4 +1,4 @@
-# 草稿：以 scrape/eval 30s 為基準。job="prometheus" 請改成環境實際 label。
+# 以 scrape/eval 30s 為基準，interval 與門檻請依環境調整。job 用 .*prometheus 比對，container 假設為 prometheus。
 # scope label 標示這條規則監控的對象，可用來分流給不同負責人。
 # scope=target、alert 的 series 不在 /metrics，要放在受測 Prometheus，或用 /federate 送到 meta。其餘放 meta。
 groups:
@@ -77,7 +77,7 @@ groups:
   - name: pipeline-storage            # 儲存與 WAL
     rules:
       - alert: PrometheusRestarted
-        expr: changes(process_start_time_seconds{job="prometheus"}[30m]) > 0
+        expr: changes(process_start_time_seconds{job=~".*prometheus"}[30m]) > 0
         labels: { severity: warning, scope: prometheus }
         annotations: { summary: "近期重啟過；頻繁重啟時 Watchdog 可能看不出來" }
       - alert: WALWriteFailed
@@ -132,7 +132,8 @@ groups:
       - alert: PrometheusMemoryNearLimit
         expr: |
           container_memory_working_set_bytes{container="prometheus"}
-            / (container_spec_memory_limit_bytes{container="prometheus"} > 0) > 0.8
-        for: 10m
+            / on (namespace, pod, container) group_left
+          kube_pod_container_resource_limits{container="prometheus",resource="memory"} > 0.8
+        for: 5m
         labels: { severity: warning, scope: container }
         annotations: { summary: "working set 接近 limit，重啟 replay 可能 OOM" }

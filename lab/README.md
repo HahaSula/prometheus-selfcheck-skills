@@ -24,6 +24,7 @@ target ──scrape──► 受測 Prometheus ──alert──► Alertmanager
 | `python3 upgrade_tests.py`、`rollback_check.py` | 跨版本回退與 alert 恢復 |
 | `python3 compare_versions.py` | 相同負載的版本資源比較 |
 | `python3 blackbox_test.py` | Blackbox 探測在各種故障下看到什麼 |
+| `python3 k8s/k8s_round2.py <skills 目錄> <chart.tgz>` | K8s 驗證，需要 minikube、helm，以及 kube-prometheus-stack 57.2 的 chart |
 
 清除：
 

@@ -51,6 +51,10 @@ argument-hint: "[snapshot-dir]"
 
 **一定要問：外部 Prometheus 的告警走哪條路？** 如果也走被監控的同一組 Alertmanager，Alertmanager 掛掉時它無法通知。它本身也需要 dead man's switch。
 
+## kube-prometheus-stack 預設規則夠嗎
+
+不夠。57.2 的預設規則涵蓋約一半訊號，**沒有**這些：資料新鮮度 heartbeat、`for` 重置、scrape 耗時比值、rule group 耗時比值、WAL 寫入失敗、checkpoint 失敗、Head 未落成 block、retention 落後、記憶體接近 limit。而且預設規則和 Prometheus 跑在一起，Prometheus 掛掉時無法通知自己。
+
 ## 執行
 
 ```bash
@@ -78,7 +82,8 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/check_coverage.py" ./selfcheck-data
 
 **調整重點：**
 - 把 `interval="30s"`、`> 25`、`> 40` 換成對方的 interval。
-- `job="prometheus"` 和 `container="prometheus"` 換成實際 label。
+- 確認 `job=~".*prometheus"` 和 `container="prometheus"` 符合實際 label。ServiceMonitor 的 job 通常是 service 名稱。
+- K8s 的記憶體規則用 `kube_pod_container_resource_limits`，因為 kube-prometheus-stack 預設丟棄 `container_spec_*`。
 - `HeadNotCompacting` 的 4 小時以預設 2h block 為準。
 - `AlertForTimerResetting` 會在重啟時誤報，要對照 `PrometheusRestarted`。
 - `BlockReloadStalled` 啟動初期可能誤報，保留 `for`。

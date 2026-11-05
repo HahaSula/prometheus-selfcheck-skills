@@ -26,7 +26,11 @@ def fmt(x):
     return f"{x/3600:.1f}h" if x >= 7200 else f"{x/60:.1f}m" if x >= 120 else f"{x:.0f}s" if x >= 10 else f"{x:.2f}s"
 SEL = re.compile(r'(?P<name>[a-zA-Z_:][a-zA-Z0-9_:]*)?\s*(?P<lab>\{[^}]*\})?\s*(?P<rng>\[[^\]]*\])?(?:\s+offset\s+(?P<off>-?[0-9a-z]+))?')
 FUNCS = {"sum","min","max","avg","count","by","on","ignoring","group_left","group_right","without","and","or","unless","bool","offset","rate","irate","increase","delta","idelta","time","vector","absent","absent_over_time","topk","bottomk","quantile","stddev","stdvar","count_values","histogram_quantile","label_replace","label_join","clamp","clamp_min","clamp_max","changes","resets","timestamp","sort","sort_desc","abs","ceil","floor","round","exp","ln","log2","log10","sqrt","scalar","deriv","predict_linear","holt_winters","double_exponential_smoothing","sum_over_time","avg_over_time","min_over_time","max_over_time","count_over_time","last_over_time","present_over_time","quantile_over_time","stddev_over_time","stdvar_over_time","e","inf","nan","start","end","hour","minute","month","year","day_of_month","day_of_week","day_of_year","days_in_month"}
+def strip_label_lists(q):
+    """Labels in by(), on() and similar clauses are not metrics."""
+    return re.sub(r"\b(by|without|on|ignoring|group_left|group_right)\s*\([^)]*\)", " ", q)
 def selectors(q):
+    q = strip_label_lists(q)
     out, clean = [], re.sub(r'"(?:[^"\\]|\\.)*"', lambda m: m.group(0).replace("(", " ").replace(")", " "), q)
     for m in SEL.finditer(clean):
         n, lab, rng = m.group("name"), m.group("lab"), m.group("rng")
@@ -87,7 +91,7 @@ def main():
                 srcs.append({**s, "jobs": jobs, "recorded": m in recorded})
             selfmeta = re.fullmatch(r"\s*vector\s*\(.*\)\s*", q) is not None
             missing = [s["metric"] for s in srcs if s["metric"] and s["metric"] in mj and not mj[s["metric"]] and not s["recorded"] and not s["metric"].startswith(("ALERTS",))]
-            if missing and "absent" not in q: issues.append(("FAIL", f"查不到 series：{', '.join(sorted(set(missing)))}。名稱打錯或 target 消失時，alert 會安靜地永遠不觸發"))
+            if missing and "absent" not in q: issues.append(("WARN", f"查不到 series：{', '.join(sorted(set(missing)))}。可能是名稱打錯或 target 消失，也可能是平常不存在的 metric，例如錯誤計數器"))
             worst = {"I": None, "d": None, "S": None}
             for s in srcs:
                 for j in s["jobs"]:

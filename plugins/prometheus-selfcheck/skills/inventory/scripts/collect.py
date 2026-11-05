@@ -65,8 +65,8 @@ def main():
         "head_series": "max(prometheus_tsdb_head_series)", "samples_rate": "sum(rate(prometheus_tsdb_head_samples_appended_total[5m]))",
         "replay_seconds": "max(prometheus_tsdb_data_replay_duration_seconds)",
         "lowest_ts_age_days": "(time() - min(prometheus_tsdb_lowest_timestamp_seconds)) / 86400", "retention_seconds": "max(prometheus_tsdb_retention_limit_seconds)", "retention_bytes": "max(prometheus_tsdb_retention_limit_bytes)",
-        "restarts": f"max(changes(process_start_time_seconds{{job=~\".*prometheus.*\"}}[{W}]))",
-        "rss": "max(process_resident_memory_bytes{job=~\".*prometheus.*\"})", "cpu_cores_peak": f"max(max_over_time(rate(process_cpu_seconds_total{{job=~\".*prometheus.*\"}}[5m])[{W}:5m]))",
+        "restarts": f"max(changes(process_start_time_seconds{{job=~\".*prometheus\"}}[{W}]))",
+        "rss": "max(process_resident_memory_bytes{job=~\".*prometheus\"})", "cpu_cores_peak": f"max(max_over_time(rate(process_cpu_seconds_total{{job=~\".*prometheus\"}}[5m])[{W}:5m]))",
         "compactions_failed": f"max(increase(prometheus_tsdb_compactions_failed_total[{W}]))", "checkpoint_failed": f"max(increase(prometheus_tsdb_checkpoint_creations_failed_total[{W}]))",
         "wal_writes_failed": f"max(increase(prometheus_tsdb_wal_writes_failed_total[{W}]))", "wal_corruptions": "max(prometheus_tsdb_wal_corruptions_total)",
         "reloads_min_5m": f"min(min_over_time(increase(prometheus_tsdb_reloads_total[5m])[{W}:5m]))",
@@ -76,7 +76,7 @@ def main():
         "has_self_metrics": "count(prometheus_tsdb_head_series)", "has_am_metrics": "count(alertmanager_notifications_total)",
         "has_cadvisor": "count(container_cpu_cfs_periods_total)", "has_ksm": "count(kube_pod_container_status_restarts_total)", "has_kubelet_volume": "count(kubelet_volume_stats_available_bytes)", "has_node_exporter": "count(node_filesystem_avail_bytes)", "has_blackbox": "count(probe_success)",
         "throttling_ratio_peak": f'max(max_over_time((rate(container_cpu_cfs_throttled_periods_total{{container=~"prometheus"}}[5m]) / rate(container_cpu_cfs_periods_total{{container=~"prometheus"}}[5m]))[{W}:5m]))',
-        "mem_ratio_peak": f'max(max_over_time((container_memory_working_set_bytes{{container="prometheus"}} / (container_spec_memory_limit_bytes{{container="prometheus"}} > 0))[{W}:5m]))',
+        "mem_ratio_peak": f'max(max_over_time((container_memory_working_set_bytes{{container="prometheus"}} / on (namespace, pod, container) group_left kube_pod_container_resource_limits{{container="prometheus",resource="memory"}})[{W}:5m]))',
     }
     res = {k: q(v) for k, v in peaks.items()}
     save("peaks", {"range": W, "exprs": peaks, "results": res})
@@ -90,6 +90,7 @@ def main():
         for r in g.get("rules", []):
             if r.get("type") == "alerting":
                 body = re.sub(r'"[^"]*"|\'[^\']*\'|\{[^}]*\}|\[[^\]]*\]', " ", r.get("query", ""))
+                body = re.sub(r"\b(by|without|on|ignoring|group_left|group_right)\s*\([^)]*\)", " ", body)
                 metrics |= {m for m in re.findall(r"[a-zA-Z_:][a-zA-Z0-9_:]*", body) if m not in KW}
     jobs = {}
     for m in sorted(metrics)[:800]:

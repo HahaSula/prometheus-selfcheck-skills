@@ -25,7 +25,11 @@ def nice(sec):
         if sec <= v: return v
     return math.ceil(sec / 3600) * 3600
 def durs(sec): return f"{int(sec/3600)}h" if sec >= 3600 and sec % 3600 == 0 else f"{int(sec/60)}m" if sec >= 60 and sec % 60 == 0 else f"{int(sec)}s"
+def strip_label_lists(q):
+    """Labels in by(), on() and similar clauses are not metrics."""
+    return re.sub(r"\b(by|without|on|ignoring|group_left|group_right)\s*\([^)]*\)", " ", q)
 def selectors(q):
+    q = strip_label_lists(q)
     out = []
     for m in SEL.finditer(q):
         n, lab, rng = m.group("name"), m.group("lab"), m.group("rng")
@@ -67,8 +71,9 @@ def main():
     resets = {}
     for x in (R.get("for_state_resets") or []):
         n = x["metric"].get("alertname", ""); resets[n] = max(resets.get(n, 0), float(x["value"][1]))
-    S, TO, count = {}, {}, {}
+    S, TO, count, pools = {}, {}, {}, {}
     for t in (targets or {}).get("activeTargets", []):
+        pools.setdefault(t.get("scrapePool", t["labels"].get("job", "")), set()).add(t["labels"].get("job", ""))
         j = t["labels"].get("job", ""); S[j] = max(S.get(j, 0), dur(t.get("scrapeInterval", ""))); TO[j] = max(TO.get(j, 0), dur(t.get("scrapeTimeout", ""))); count[j] = count.get(j, 0) + 1
     lookback, grace = dur(flags.get("query.lookback-delta", "5m")) or 300, dur(flags.get("rules.alert.for-grace-period", "10m")) or 600
     k = P["tolerate_missed_scrapes"]; V = []
@@ -87,11 +92,14 @@ def main():
     yaml = cfg.get("yaml", ""); blocks = {}
     for b in re.split(r"(?m)^- job_name:\s*", yaml.split("scrape_configs:", 1)[-1])[1:]:
         name = b.split("\n", 1)[0].strip().strip("'\""); blocks[name] = b
-    for j in sorted(set(S) | set(blocks)):
+    # job_name in the config is the scrape pool; the job label can differ after relabeling (for example ServiceMonitor).
+    for pool in sorted(blocks):
+        if pool not in pools and not pools.get(pool) and pool not in P["ignore_jobs"]:
+            add("SCRAPE_JOB_NO_TARGETS", "WARN", f"pool/{pool}", "設定了這個 scrape pool，但目前沒有任何 active target，服務發現可能失效；依賴它的 alert 不會觸發", "檢查服務發現與 relabel，或移除這個設定")
+    pool_of = {j: p for p, js in pools.items() for j in js}
+    for j in sorted(S):
         if j in P["ignore_jobs"]: continue
         o = f"job/{j}"
-        if j in blocks and j not in S:
-            add("SCRAPE_JOB_NO_TARGETS", "WARN", o, "設定了這個 job，但目前沒有任何 active target，服務發現可能失效；依賴它的 alert 不會觸發", "檢查服務發現與 relabel，或移除這個 job"); continue
         cov = generic_up or any(re.search(r'(?<![a-zA-Z0-9_:])up\s*\{[^}]*' + re.escape(j), q) for q in allq) or any(re.search(r'absent\w*\([^)]*' + re.escape(j), q) for q in allq)
         if not cov:
             add("SCRAPE_NOT_MONITORED", "FAIL", o, "沒有 alert 會在這個 job 的 target 停機或消失時通知你；依賴它的 alert 只會安靜地不觸發", f'新增 up{{job="{j}"}} == 0 的告警，並加 absent(up{{job="{j}"}}) 防止 target 整個消失')
@@ -105,7 +113,7 @@ def main():
         n = sp.get(j)
         if n and n > P["large_target_samples"]:
             add("SCRAPE_TARGET_TOO_LARGE", "WARN", o, f"單一 target 尖峰 {n:,.0f} 個 sample。每個 target 只有一條 goroutine，parse 與 append 受單核速度限制，加 CPU 幫助有限", "用 metric_relabel_configs 丟不用的 series，或拆 target")
-        b = blocks.get(j)
+        b = blocks.get(pool_of.get(j, j))
         if b is not None and not re.search(r"sample_limit:\s*[1-9]", b):
             add("SCRAPE_NO_SAMPLE_LIMIT", "INFO", o, "沒有 sample_limit，target 突然暴增 series 時會直接衝擊整台 Prometheus", "設定比現況略高的 sample_limit，並監控 prometheus_target_scrapes_exceeded_sample_limit_total")
         if j not in used and j not in ("", "prometheus", "alertmanager"):
@@ -138,7 +146,7 @@ def main():
             for s in sels:
                 m = s["metric"]
                 if m and m in mj and not mj[m] and m not in recorded and not m.startswith("ALERTS") and "absent" not in q and m not in seen:
-                    seen.add(m); add("SERIES_NOT_FOUND", "FAIL", o, f"目前查不到 {m}。名稱打錯或 target 消失時，這條 alert 永遠不會觸發", "確認 metric 名稱與 relabel，並為來源 job 加上 absent 告警")
+                    seen.add(m); add("SERIES_NOT_FOUND", "WARN", o, f"目前查不到 {m}。可能是名稱打錯或 target 消失，這時 alert 永遠不會觸發；也可能是平常不存在的 metric，例如錯誤計數器", "確認 metric 名稱與來源；確定該存在的話，為來源 job 加上 absent 告警")
                 if m and s["fn"] in ("rate", "irate", "increase") and isinstance(meta.get(m), list) and meta[m] and meta[m][0].get("type") not in ("counter", "histogram", "summary", "unknown", "untyped", ""):
                     add("RATE_ON_NON_COUNTER", "WARN", o, f'{s["fn"]}() 用在 {m}，它的 metadata 型別是 {meta[m][0].get("type")}', "gauge 改用 deriv() 或 delta()")
                 jm = re.search(r'job\s*=\s*"([^"]+)"', s["labels"]); jobs = [jm.group(1)] if jm else list(mj.get(m, []))

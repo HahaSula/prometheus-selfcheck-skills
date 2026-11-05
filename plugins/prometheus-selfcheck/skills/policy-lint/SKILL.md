@@ -41,6 +41,8 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/policy_lint.py" ./selfcheck-data --rule-fil
 
 ## 判讀限制
 
+- `SERIES_NOT_FOUND` 無法分辨打錯名稱和「平常不存在的 metric」，例如錯誤計數器。kube-prometheus-stack 這類預設規則會有很多筆，先看自己寫的 rule。
+
 - 腳本用正規表示式解析 PromQL。Recording rule 的上游延遲、複雜的 `on()`、subquery 都要人工看。報告前請讀該條表達式。
 - `SCRAPE_NOT_MONITORED` 只看**這台** Prometheus 的 alert。如果另一台 Prometheus 負責，就用豁免並寫明理由，或請對方提供那台的 rule。
 - 建議值是依公式算出的下限，不代表最佳值。要配合可接受的偵測延遲一起決定。

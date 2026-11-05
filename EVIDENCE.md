@@ -142,6 +142,26 @@ CPU、scrape、rule 耗時沒有明顯差異，2.55 以上記憶體約少 10%。
 
 接收端停機 170 秒時，`alertmanager_notifications_failed_total` 2 分鐘內增加約 40 次，`prometheus_notifications_errors_total` 為 0。
 
+## 9. K8s 驗證
+
+Minikube、kube-prometheus-stack 57.2、Prometheus 2.51.2、2 個各 15 萬 series 的 target。
+
+| 驗證項目 | 結果 |
+|---|---|
+| 24 條規則載入 | 全部 `health=ok`；無資料的只有 `interval="30s"`（這裡 15s）和 `ALERTS_FOR_STATE`（當時沒有帶 `for` 的 pending alert） |
+| CPU 限制 150m | Throttling 約 70%；`PrometheusCPUThrottled` 限制後約 14 分鐘觸發，內建 `CPUThrottlingHigh` 約 18 分鐘（含 pod 重建） |
+| 記憶體接近 limit | 比值到 0.9 但回落，當時 `for: 10m` 未觸發，改為 `for: 5m`，並以 `promtool test rules` 驗證邏輯，K8s 上未再次觸發 |
+| OOM | 重啟 6 次、`OOMKilled`、`CrashLoopBackOff`；Prometheus 自己查不到原因，因為當時沒有在抓資料 |
+| Alertmanager 不存在 | `NoAlertmanagerDiscovered`、`NotificationsDropped` 有觸發 |
+| PVC 用量 | Minikube 的 hostPath 沒有 `kubelet_volume_stats_*`，未驗證 |
+
+**真實 K8s 抓到的問題（都已修正）：**
+- `job="prometheus"` 對不上：ServiceMonitor 的 job 是 service 名稱。
+- `container_spec_memory_limit_bytes` 被 chart 丟棄，要用 `kube_pod_container_resource_limits`。
+- 腳本把 `by (...)` 的 label 當成 metric，並混淆 scrape pool 和 `job` label。
+
+**預設規則的覆蓋（只算 chart 內建 126 條 alert）：** 涵蓋約一半訊號，沒有資料 heartbeat、`for` 重置、scrape 與 rule group 耗時比值、WAL 寫入與 checkpoint 失敗、Head 未落成 block、retention 落後、記憶體接近 limit。這是比對 metric 名稱的結果。
+
 ## 上游參考
 
 - [#13027](https://github.com/prometheus/prometheus/issues/13027)、[#13152](https://github.com/prometheus/prometheus/issues/13152) WAL 損毀後無法截斷

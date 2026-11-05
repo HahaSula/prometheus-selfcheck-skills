@@ -53,7 +53,7 @@ class Lint(unittest.TestCase):
     def has(self, v, pol, obj): return any(x["policy"] == pol and x["object"] == obj for x in v)
     def test_expected_violations(self):
         v, _ = self.lint()
-        for pol, obj in [("RANGE_TOO_SHORT", "alert/ShortRange"), ("SCRAPE_INTERVAL_TOO_SHORT", "job/slow"), ("SCRAPE_TARGET_TOO_LARGE", "job/slow"), ("SCRAPE_JOB_NO_TARGETS", "job/ghost"),
+        for pol, obj in [("RANGE_TOO_SHORT", "alert/ShortRange"), ("SCRAPE_INTERVAL_TOO_SHORT", "job/slow"), ("SCRAPE_TARGET_TOO_LARGE", "job/slow"), ("SCRAPE_JOB_NO_TARGETS", "pool/ghost"),
                          ("LOOKBACK_TOO_SHORT", "alert/Instant"), ("RATE_ON_NON_COUNTER", "alert/GaugeRate"), ("SERIES_NOT_FOUND", "alert/Missing"), ("RANGE_SHORTER_THAN_INTERVAL", "alert/Gap"),
                          ("FOR_ZERO", "alert/NoFor"), ("ALERT_MISSING_LABEL", "alert/Bare"), ("ALERT_MISSING_ANNOTATION", "alert/Bare"), ("ALERT_FOR_RESETTING", "alert/Resetting"),
                          ("GROUP_INTERVAL_TOO_SHORT", "group/heavy"), ("CRITICAL_ALERT_IN_HEAVY_GROUP", "alert/CriticalHeavy"), ("SCRAPE_NO_SAMPLE_LIMIT", "job/slow")]:
@@ -81,9 +81,9 @@ class Lint(unittest.TestCase):
         v, _ = self.lint(version="2.55.1", extra_groups=[grp], yaml_extra="  rule_query_offset: 3m\n"); self.assertFalse(self.has(v, "RANGE_TOO_SHORT", "alert/QO"))
     def test_exemption_and_exit_code(self):
         with tempfile.TemporaryDirectory() as t:
-            f = os.path.join(t, "p.json"); json.dump({"exempt": [{"policy": "SCRAPE_JOB_NO_TARGETS", "object": "job/ghost", "reason": "planned"}, {"policy": "FOR_ZERO", "object": "alert/NoFor", "reason": "old", "until": "2000-01-01"}]}, open(f, "w"))
+            f = os.path.join(t, "p.json"); json.dump({"exempt": [{"policy": "SCRAPE_JOB_NO_TARGETS", "object": "pool/ghost", "reason": "planned"}, {"policy": "FOR_ZERO", "object": "alert/NoFor", "reason": "old", "until": "2000-01-01"}]}, open(f, "w"))
             v, r = self.lint("--policy", f, "--fail-on", "FAIL")
-            self.assertEqual([x["exempt"] for x in v if x["object"] == "job/ghost"], ["planned"])
+            self.assertEqual([x["exempt"] for x in v if x["object"] == "pool/ghost"], ["planned"])
             self.assertIsNone([x for x in v if x["object"] == "alert/NoFor" and x["policy"] == "FOR_ZERO"][0]["exempt"], "expired exemption must not apply")
             self.assertEqual(r.returncode, 1)
 class DataRange(unittest.TestCase):
@@ -91,13 +91,31 @@ class DataRange(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             snapshot(d); pk = json.load(open(os.path.join(d, "peaks.json"))); pk["results"]["lowest_ts_age_days"] = [{"value": [0, "0.01"]}]
             json.dump(pk, open(os.path.join(d, "peaks.json"), "w")); self.assertIn("實際只有", run(LINT, d).stdout)
+class K8sShapes(unittest.TestCase):
+    def test_label_lists_are_not_metrics_and_pools_map_to_jobs(self):
+        with tempfile.TemporaryDirectory() as d:
+            snapshot(d)
+            rules = json.load(open(os.path.join(d, "rules.json")))
+            rules["groups"].append({"name": "k", "file": "k.yml", "interval": 30, "evaluationTime": 1, "rules": [alert("Agg", 'sum by (namespace, service) (rate(fast_total{job="fast"}[5m])) / ignoring (code) group_left (cluster) fast_gauge > 1')]})
+            json.dump(rules, open(os.path.join(d, "rules.json"), "w"))
+            t = json.load(open(os.path.join(d, "targets.json")))
+            t["activeTargets"].append({"labels": {"job": "svc-a"}, "scrapePool": "serviceMonitor/ns/svc-a/0", "scrapeInterval": "30s", "scrapeTimeout": "10s"})
+            json.dump(t, open(os.path.join(d, "targets.json"), "w"))
+            c = json.load(open(os.path.join(d, "config.json"))); c["yaml"] += "- job_name: serviceMonitor/ns/svc-a/0\n  sample_limit: 100\n- job_name: serviceMonitor/ns/empty/0\n"
+            json.dump(c, open(os.path.join(d, "config.json"), "w"))
+            o = os.path.join(d, "o.json"); run(LINT, d, "--json", o); v = json.load(open(o))
+            has = lambda pol, obj: any(x["policy"] == pol and x["object"] == obj for x in v)
+            self.assertFalse(any(x["policy"] == "SERIES_NOT_FOUND" and x["object"] == "alert/Agg" for x in v))
+            self.assertTrue(has("SCRAPE_JOB_NO_TARGETS", "pool/serviceMonitor/ns/empty/0"))
+            self.assertFalse(has("SCRAPE_JOB_NO_TARGETS", "pool/serviceMonitor/ns/svc-a/0"))
+            self.assertFalse(has("SCRAPE_NO_SAMPLE_LIMIT", "job/svc-a"))
 class Others(unittest.TestCase):
     def test_analyze(self):
         with tempfile.TemporaryDirectory() as d:
             snapshot(d); o = os.path.join(d, "o.json"); r = run(RULES, d, "--json", o); self.assertEqual(r.returncode, 0, r.stderr)
             rows = {x["alert"]: x for x in json.load(open(o))}
             self.assertEqual(rows["ShortRange"]["severity"], "FAIL"); self.assertEqual(rows["Good"]["severity"], "OK")
-            self.assertEqual(rows["ShortRange"]["I"], 120); self.assertEqual(rows["Missing"]["severity"], "FAIL")
+            self.assertEqual(rows["ShortRange"]["I"], 120); self.assertEqual(rows["Missing"]["severity"], "WARN")
             self.assertEqual(rows["Good"]["latency_bound"], 30 + 1 + 30 + 1 + 300)
     def test_coverage(self):
         with tempfile.TemporaryDirectory() as d:

@@ -13,7 +13,7 @@ argument-hint: "[snapshot-dir]"
 ## CPU
 
 ```promql
-rate(process_cpu_seconds_total{job="prometheus"}[5m])
+rate(process_cpu_seconds_total{job=~".*prometheus"}[5m])
 rate(container_cpu_cfs_throttled_periods_total{container="prometheus"}[5m])
   / rate(container_cpu_cfs_periods_total{container="prometheus"}[5m])
 prometheus_rule_group_last_duration_seconds / prometheus_rule_group_interval_seconds
@@ -43,11 +43,14 @@ topk(10, scrape_samples_scraped)
 
 ```promql
 container_memory_working_set_bytes{container="prometheus"}
-  / (container_spec_memory_limit_bytes{container="prometheus"} > 0)
+  / on (namespace, pod, container) group_left
+kube_pod_container_resource_limits{container="prometheus",resource="memory"}
 prometheus_tsdb_head_series
 prometheus_tsdb_data_replay_duration_seconds
 ```
 
+- kube-prometheus-stack 預設丟棄 `container_spec_*`，所以 limit 要用 kube-state-metrics 的 `kube_pod_container_resource_limits`。
+- Prometheus 被 OOM 時自己抓不到資料，`OOMKilled` 要由外部 Prometheus 或 `kubectl describe` 看。
 - 實測 working set 超過 limit 的 83% 開始 OOM，所以建議告警門檻 80%。這是 30 萬 series 的結果，規模不同要重新確認。
 - **Replay 是盲區。** Replay 期間 rule 不會執行，重啟後 `for` 小於 10m 的 alert 還要重新計時。實驗環境只有 8–13 秒，大型環境可能很久。問使用者：上次重啟花多久？
 - 上游回報大型環境 replay 的記憶體可達平時 2–3 倍，實驗環境無法驗證。用實際重啟時的尖峰判斷。

@@ -7,7 +7,7 @@
 | Policy | 嚴重度 | 規則 | 為什麼 |
 |---|---|---|---|
 | `SCRAPE_NOT_MONITORED` | FAIL | 每個 scrape job 都要有 target 停機與消失的告警 | Target 不見時，依賴它的 alert 只會安靜地不觸發 |
-| `SCRAPE_JOB_NO_TARGETS` | WARN | 設定的 job 要有 active target | 服務發現失效的訊號 |
+| `SCRAPE_JOB_NO_TARGETS` | WARN | 設定的 scrape pool 要有 active target | 服務發現失效的訊號 |
 | `SCRAPE_INTERVAL_TOO_SHORT` | FAIL／WARN | 尖峰 scrape 耗時不超過 interval，建議低於 80% | 超過時 tick 被丟掉，實際間隔拉長 |
 | `SCRAPE_TIMEOUT_TOO_CLOSE` | WARN | 尖峰耗時低於 timeout 的 80% | 再慢一點就會 scrape 失敗 |
 | `SCRAPE_TARGET_TOO_LARGE` | WARN | 單一 target 的 sample 數低於上限（可設定） | 每個 target 只有一條 goroutine |
@@ -31,7 +31,7 @@
 | `RANGE_SHORTER_THAN_INTERVAL` | WARN | `R ≥ E` | 視窗之間有空隙 |
 | `OFFSET_MISSING` | WARN | scrape 耗時明顯時，`O ≥ d` | 不然 rule 看不到最新資料 |
 | `LOOKBACK_TOO_SHORT` | FAIL | 沒有 range 的 selector：`I + d < lookback` | 會間歇查不到 |
-| `SERIES_NOT_FOUND` | FAIL | Alert 用到的 series 要存在 | 打錯名稱或 target 消失時永遠不觸發 |
+| `SERIES_NOT_FOUND` | WARN | Alert 用到的 series 應該存在 | 打錯名稱或 target 消失時永遠不觸發；但錯誤計數器這類 metric 平常不存在，要人工判斷 |
 | `ALERT_FOR_RESETTING` | FAIL | `for` 計時不應反覆重置 | Rule 沒報錯卻無法 firing 的直接證據 |
 | `FOR_ZERO` | WARN | 除非刻意，否則要有 `for` | 一次抖動就觸發或解除 |
 | `FOR_TOO_SHORT` | WARN | `F ≥ 2I` | 否則只涵蓋 1–2 個點 |
