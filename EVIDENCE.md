@@ -162,6 +162,50 @@ Minikube、kube-prometheus-stack 57.2、Prometheus 2.51.2、2 個各 15 萬 seri
 
 **預設規則的覆蓋（只算 chart 內建 126 條 alert）：** 涵蓋約一半訊號，沒有資料 heartbeat、`for` 重置、scrape 與 rule group 耗時比值、WAL 寫入與 checkpoint 失敗、Head 未落成 block、retention 落後、記憶體接近 limit。這是比對 metric 名稱的結果。
 
+## 10. 每一層怎麼執行：單序還是並行
+
+依原始碼整理（Prometheus 2.51.2、Alertmanager 0.27.0），依資料流排列。瓶頸和連鎖問題都出在單序的環節。除非另外註明，本節是讀碼結果。
+
+| 層級 | 同一個對象內 | 不同對象之間 | 併行上限 | 卡住時影響誰 |
+|---|---|---|---|---|
+| 服務發現 | 每個 provider 一條 goroutine | 並行 | 無 | Target 清單更新變慢，最快 5 秒同步一次 |
+| Scrape（target） | **單序**：抓取、parse、relabel、append、commit。沒跑完下一輪不會開始，tick 被丟掉 | 並行：每個 target 一條 goroutine，用 offset 錯開 | 無，受 CPU 限制 | 只影響該 target，除非搶 CPU、記憶體或 WAL |
+| WAL 寫入（全域） | **單序**：所有 scrape 和 rule 的 commit 都經過同一把鎖（`WL.Log`）；切換 segment 的 fsync 由另一條 goroutine 非同步執行 | – | 1 | 全部寫入；平常只寫 page cache 所以很快 |
+| Head（series） | **單序**：每條 series 一把鎖 | 並行：16384 個 stripe；chunk 落盤是單一背景佇列 | 依 stripe | 碰到相同 stripe 或 series 的操作 |
+| Rule group（group） | **單序**：rule 依定義順序跑，相鄰兩輪不重疊 | 並行：每個 group 一條 goroutine | Group 數無上限；查詢受查詢引擎限制 | 同 group 的所有 alert |
+| 查詢引擎（全域） | **單序**：一個查詢的求值在同一條 goroutine，合併多個 querier 時才另開 | 有上限並行：rule 和 API 搶同一組 slot，解析與執行各搶一次 | `--query.max-concurrency`，預設 20 | Rule 和 API 都排隊 |
+| Alert 狀態（rule） | **單序**：在 group 的 goroutine 裡更新 | 跟隨 rule group | 跟隨 rule group | Group 慢時跟著延後 |
+| Notifier（全域） | **單序**：一條 queue、一條送出迴圈，每批最多 64 筆。同一批同時送給所有 Alertmanager，等全部回應才送下一批 | – | 同時 1 批 | 全部通知；逾時預設 10 秒 |
+| Alertmanager（alert group） | **單序**：每個 alert group 依 `group_interval` 依序送出 | 並行：每個 alert group 一條 goroutine，同 group 的多個 receiver 也並行，失敗會重試 | 無 | 用到該接收端的 group |
+| TSDB 維護（全域） | **單序**：reload、retention、head compaction、block compaction、WAL 截斷都在同一條 goroutine（`DB.run`） | – | 1 | 全部維護工作；compaction 慢或失敗時 retention 延後或停止 |
+
+**單序環節造成過的實際問題：**
+
+| 單序環節 | 結果 | 證據 |
+|---|---|---|
+| 單一 target 內 | Scrape 超過 interval 時 tick 被丟掉，alert 無法 firing，其他 target 不受影響 | 實測 |
+| 單一 rule group 內 | 同一條 alert 放在重 group，延遲變近兩倍還會漏事件；獨立小 group 不受影響 | 實測 |
+| 查詢 slot | 重查詢佔滿後，rule group 從幾秒變 40 秒，scrape 不受影響 | 實測 |
+| WAL 全域寫入 | 10 IOPS 時 scrape 和 rule 不受影響；磁碟寫滿時兩者同時失敗 | 實測；page cache 吃緊的情況未測 |
+| TSDB 維護 | Compaction 用完空間時 reload 歸零；長查詢卡住 Compact 時 reload 也停止 | 實測 |
+| Notifier 送出迴圈 | 一台 Alertmanager 慢會拖累全部 | 讀碼；實驗只測過 Alertmanager 完全停機 |
+
+依據（v2.51.2）：`scrape/scrape.go`（`sync`、`scrapeLoop.run`、`scrapeAndReport`）、`tsdb/wlog/wlog.go`（`Log`、`nextSegment`）、`tsdb/head.go`、`tsdb/chunks/chunk_write_queue.go`、`rules/manager.go`、`rules/group.go`（`run`、`Eval`）、`promql/engine.go`（`queueActive`）、`notifier/notifier.go`、`tsdb/db.go`（`run`）。Alertmanager 0.27.0：`dispatch/dispatch.go`（`aggrGroup.run`）、`notify/notify.go`（`FanoutStage`、`RetryStage`）。
+
+## 11. 執行模型在各版本的差異
+
+2.55.1 的單序結構和 2.51.2 完全相同；3.x 只改了 notifier，以及選用的 rule 並行。比對 v2.51.2、v2.55.1、v3.0.0、v3.5.0、v3.13.5、v3.15.1 的原始碼，起始版本取自 repo tag，截至 2026-11。
+
+| 層級 | 2.51.2、2.55.1 | 3.5 LTS（已結束支援） | 3.13 LTS、3.15 |
+|---|---|---|---|
+| Scrape、WAL、Head、查詢引擎 | 相同 | 相同 | 相同 |
+| Rule group | 預設單序；`concurrent-rule-eval` 無法判斷依賴時順序可能失效 | 預設單序；開 flag 時，3.1 起無法判斷依賴會退回依序，3.2 起分三段：無上游併行 → 上下游都有依序 → 無下游併行 | 同左 |
+| Notifier | 一條 queue，每批 64 筆，等所有 Alertmanager 回應 | 結構相同；3.4 起批次預設 256 筆，可用 `--alertmanager.notification-batch-size` 調整 | **3.10 起每台各一條 queue**，一台慢不再拖累其他台 |
+| TSDB 維護 | 單一 goroutine；2.55 起可選 `delayed-compaction` | 單一 goroutine | 單一 goroutine；3.9 起 reload 間隔可設定，3.10 起有可選的 stale series compaction。Reload timer 被重置的問題仍在，實測 3.13.5 同樣歸零 |
+| `GOMAXPROCS`、`GOMEMLIMIT` | 要開 feature flag | 3.0 起預設對齊 | 3.0 起預設對齊 |
+
+Reload ticker 修正只在 main，還沒有正式版。Alertmanager 本身的版本差異不在此表。
+
 ## 上游參考
 
 - [#13027](https://github.com/prometheus/prometheus/issues/13027)、[#13152](https://github.com/prometheus/prometheus/issues/13152) WAL 損毀後無法截斷
