@@ -1,5 +1,9 @@
 # Prometheus Self-Check Skills
 
+> **這個 repo 已封存，請改用 [alert-trust](https://github.com/HahaSula/alert-trust)。**
+> alert-trust 涵蓋 Prometheus、VictoriaMetrics、Alertmanager 與資料庫 exporter，skill 與工具都讀同一份目錄。這裡的實驗與 `EVIDENCE.md` 已搬到 [`lab/prometheus/`](https://github.com/HahaSula/alert-trust/tree/main/lab/prometheus)。
+> 安裝新 plugin：`/plugin marketplace add HahaSula/alert-trust`，然後 `/plugin install alert-trust@alert-trust`。
+
 給 Prometheus 和 Alertmanager owner 的互動式自檢工具，用 [Claude Code](https://code.claude.com/docs) skill 實作。它會讀取你的設定、問查不到的事，然後回答：
 
 - **這些 alert 接近極限時還能不能信？**
